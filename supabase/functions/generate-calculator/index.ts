@@ -39,7 +39,7 @@ serve(async (req) => {
 Description: ${description}`;
 
     // Use a better model if available
-    const modelName = 'gpt2'; // Replace with any HF text-generation model
+    const modelName = 'bigscience/bloom'; // Replace with any HF text-generation model
 
     const response = await fetch(
       `https://api-inference.huggingface.co/models/${modelName}`,
