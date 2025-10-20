@@ -13,11 +13,19 @@ serve(async (req) => {
 
   try {
     const { description } = await req.json();
-    console.log('Generating calculator for:', description);
+    if (!description || typeof description !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Invalid request: description is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+      return new Response(
+        JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const systemPrompt = `You are a calculator generation AI. Generate a calculator based on the user's description.
@@ -42,12 +50,7 @@ Return a JSON object with this exact structure:
 
 Field types can be: "number", "text", "select", "checkbox"
 For select fields, include "options": ["Option 1", "Option 2"]
-The formula should use JavaScript expressions with field IDs.
-
-Examples:
-- "split rent between roommates" → fields for rent amount and number of roommates, formula: "rent / roommates"
-- "calculate BMI" → fields for weight and height, formula: "weight / (height * height)"
-- "tip calculator" → fields for bill amount and tip percentage, formula: "bill * (tipPercent / 100)"`;
+The formula should use JavaScript expressions with field IDs.`;
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -103,38 +106,37 @@ Examples:
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: 'Payment required. Please add credits to your workspace.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
       const errorText = await response.text();
       console.error('AI API error:', response.status, errorText);
-      throw new Error('Failed to generate calculator');
+      const errorMessage = response.status === 429 ? 
+        'Rate limit exceeded. Please try again later.' : 
+        response.status === 402 ? 
+        'Payment required. Please add credits to your workspace.' : 
+        'Failed to generate calculator';
+      return new Response(
+        JSON.stringify({ error: errorMessage }),
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const data = await response.json();
-    console.log('AI Response:', JSON.stringify(data));
-
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) {
-      throw new Error('No tool call in response');
+
+    if (!toolCall?.function?.arguments) {
+      console.error('No tool call or invalid response:', JSON.stringify(data));
+      return new Response(
+        JSON.stringify({ error: 'No tool call in response from Lovable AI' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const calculatorData = JSON.parse(toolCall.function.arguments);
-    console.log('Generated calculator:', calculatorData);
 
     return new Response(
       JSON.stringify({ calculator: calculatorData }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
     console.error('Error in generate-calculator:', error);
     return new Response(
