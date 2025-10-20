@@ -38,8 +38,11 @@ serve(async (req) => {
 }
 Description: ${description}`;
 
+    // Use a better model if available
+    const modelName = 'gpt2'; // Replace with any HF text-generation model
+
     const response = await fetch(
-      'https://api-inference.huggingface.co/models/gpt2', // replace with any HF model
+      `https://api-inference.huggingface.co/models/${modelName}`,
       {
         method: 'POST',
         headers: {
@@ -52,6 +55,7 @@ Description: ${description}`;
 
     if (!response.ok) {
       const text = await response.text();
+      console.error('Hugging Face API error:', response.status, text);
       return new Response(
         JSON.stringify({ error: `Hugging Face API error: ${text}` }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -59,14 +63,25 @@ Description: ${description}`;
     }
 
     const data = await response.json();
-    // Hugging Face returns text, we try to parse JSON from it
+    const output = data[0]?.generated_text || '';
+
+    // Try to extract JSON object from text
+    const jsonMatch = output.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('Failed to extract JSON from model output:', output);
+      return new Response(
+        JSON.stringify({ error: 'Failed to extract calculator JSON from model output' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     let calculatorData;
     try {
-      // Some models return plain text; try parsing JSON from first output
-      calculatorData = JSON.parse(data[0].generated_text || '{}');
-    } catch {
+      calculatorData = JSON.parse(jsonMatch[0]);
+    } catch (err) {
+      console.error('JSON parse error:', err);
       return new Response(
-        JSON.stringify({ error: 'Failed to parse calculator JSON from model output' }),
+        JSON.stringify({ error: 'Invalid JSON format from model output' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -77,6 +92,7 @@ Description: ${description}`;
     );
 
   } catch (err) {
+    console.error('Function error:', err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
