@@ -20,10 +20,10 @@ serve(async (req) => {
       );
     }
 
-    const HUGGINGFACE_API_KEY = Deno.env.get('HUGGINGFACE_API_KEY');
-    if (!HUGGINGFACE_API_KEY) {
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ error: 'HUGGINGFACE_API_KEY not configured' }),
+        JSON.stringify({ error: 'LOVABLE_API_KEY not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -36,34 +36,49 @@ serve(async (req) => {
   "formula": "field1 * 2",
   "resultLabel": "Result"
 }
-Description: ${description}`;
 
-    // Use a better model if available
-    const modelName = 'bigscience/bloom'; // Replace with any HF text-generation model
+Requirements:
+- Create a calculator based on: ${description}
+- Return ONLY valid JSON, no additional text
+- Use meaningful field IDs and labels
+- Formula should reference field IDs (e.g., "field1 * field2 + 10")
+- Make it practical and user-friendly
+
+JSON:`;
 
     const response = await fetch(
-      `https://api-inference.huggingface.co/models/${modelName}`,
+      'https://lovable-ai-gateway-api.lovable.app/v1/chat/completions',
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${HUGGINGFACE_API_KEY}`,
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ inputs: prompt }),
+        body: JSON.stringify({
+          model: 'openai/gpt-5-mini',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        }),
       }
     );
 
     if (!response.ok) {
       const text = await response.text();
-      console.error('Hugging Face API error:', response.status, text);
+      console.error('Lovable AI API error:', response.status, text);
       return new Response(
-        JSON.stringify({ error: `Hugging Face API error: ${text}` }),
+        JSON.stringify({ error: `AI API error: ${text}` }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const data = await response.json();
-    const output = data[0]?.generated_text || '';
+    const output = data.choices?.[0]?.message?.content || '';
 
     // Try to extract JSON object from text
     const jsonMatch = output.match(/\{[\s\S]*\}/);
